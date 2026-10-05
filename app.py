@@ -1,71 +1,69 @@
 import os
 os.environ.pop("SSLKEYLOGFILE", None)
 
+import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaEmbeddings, ChatOllama
 from langchain_chroma import Chroma
 
-# 1. Load PDF
-loader = PyPDFLoader("data/test.pdf")
-documents = loader.load()
+st.title("Local PDF Chat with RAG")
+st.write("Ask questions about the PDF using Llama 3, Ollama and ChromaDB.")
 
-print(f"Loaded {len(documents)} pages")
+pdf_path = "data/test.pdf"
 
-# 2. Split into chunks
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200
-)
+@st.cache_resource
+def create_vector_store():
+    loader = PyPDFLoader(pdf_path)
+    documents = loader.load()
 
-chunks = text_splitter.split_documents(documents)
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
 
-print(f"Created {len(chunks)} chunks")
+    chunks = splitter.split_documents(documents)
 
-# 3. Create embeddings
-embeddings = OllamaEmbeddings(
-    model="nomic-embed-text"
-)
+    embeddings = OllamaEmbeddings(
+        model="nomic-embed-text"
+    )
 
-# 4. Store in ChromaDB
-vector_store = Chroma.from_documents(
-    documents=chunks,
-    embedding=embeddings,
-    persist_directory="./chroma_db"
-)
+    vector_store = Chroma.from_documents(
+        documents=chunks,
+        embedding=embeddings
+    )
 
-print("PDF stored in ChromaDB successfully")
+    return vector_store
 
-# 5. Ask a question
-question = "What are the examples of abnormal situations in the document?"
+vector_store = create_vector_store()
 
-results = vector_store.similarity_search(question, k=3)
+question = st.text_input("Ask a question about the PDF:")
 
-# 6. Combine retrieved chunks
-context = "\n\n".join(result.page_content for result in results)
+if question:
+    results = vector_store.similarity_search(question, k=3)
 
-# 7. Connect to Llama 3
-llm = ChatOllama(
-    model="llama3",
-    temperature=0
-)
+    context = "\n\n".join(
+        result.page_content for result in results
+    )
 
-prompt = f"""
-You are answering questions using only the PDF context below.
+    llm = ChatOllama(
+        model="llama3",
+        temperature=0
+    )
 
-Context:
-{context}
+    prompt = f"""
+    Answer the question using only the provided PDF context.
 
-Question:
-{question}
+    Context:
+    {context}
 
-Answer clearly and concisely.
-"""
+    Question:
+    {question}
 
-response = llm.invoke(prompt)
+    Give a clear and concise answer.
+    """
 
-print("\nQUESTION:")
-print(question)
+    response = llm.invoke(prompt)
 
-print("\nANSWER:")
-print(response.content)
+    st.subheader("Answer")
+    st.write(response.content)
