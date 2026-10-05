@@ -1,6 +1,9 @@
 .venv/
 venv/
 __pycache__/
+*.pyc
 .env
-chroma_db/
 .DS_Store
+chroma_db/
+.pytest_cache/
+deepeval-cache.json
